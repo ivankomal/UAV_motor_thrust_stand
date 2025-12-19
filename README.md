@@ -202,37 +202,3 @@ UAV thrust: 1.82kg
 Payload: 0.41kg
 ```
 
-## Calibration
-
-1. **ESC Calibration**: Run the main program and let it arm the ESC at startup
-2. **Load Cell Calibration**: Place a known weight (default 0.8kg) on the load cell during startup
-3. **Fine-tuning**: Adjust `CORRECTION_K` value based on measurement accuracy
-
-## Troubleshooting
-
-**Motor doesn't spin:**
-- Check ESC arming sequence (1360µs for 2 seconds)
-- Verify PWM range matches your ESC specifications
-- Ensure proper power supply to ESC and motor
-
-**Inaccurate thrust readings:**
-- Recalibrate load cell with known weight
-- Adjust `CORRECTION_K` correction factor
-- Check load cell wiring and connections
-
-**LCD not displaying:**
-- Verify I2C address (default 0x27, try 0x3F if needed)
-- Check I2C connections (SDA/SCL)
-- Run `make test-lcd` to test LCD separately
-
-## License
-
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
-
-## Authors
-
-[Add authors/contributors here]
