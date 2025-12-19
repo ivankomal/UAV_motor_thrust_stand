@@ -62,7 +62,7 @@ void loop() {
   Serial.print("us (");
   Serial.print(map(currentThrottle, 1000, 2000, 0, 100));
   Serial.println("%)");
-  delay(3000);
+  delay(2000);
 
   // 1600us for 2 seconds
   currentThrottle = 1600;
