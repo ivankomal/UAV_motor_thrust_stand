@@ -1,19 +1,15 @@
 # UAV Motor Thrust Stand
 
-ESP32-based motor thrust measurement system for UAV/drone motor testing and payload capacity calculation.
+ESP32-based motor thrust measurement system for drone motor testing and payload capacity calculation.
 
 ## Overview
 
-This project provides a complete solution for measuring UAV motor thrust using a load cell, with an interactive LCD menu system and automated testing capabilities. It supports both manual testing with real-time throttle control and automated algorithm-based testing with payload calculations.
+This project provides a complete solution for measuring UAV motor thrust using a load cell, with an interactive LCD menu system and automated testing capabilities.
 
 ## Features
 
 - **Manual Test Mode**: Real-time motor control using a potentiometer with live thrust readings
 - **Algorithm Test Mode**: Automated PWM ramping with comprehensive data collection
-- **Payload Calculation**: Automatic calculation of UAV payload capacity based on thrust measurements
-- **Interactive UI**: LCD menu system with button navigation
-- **Load Cell Integration**: HX711-based precision weight measurement
-- **Inverted ESC Support**: Configured for ESCs where lower PWM = higher speed
 
 ## Hardware Requirements
 
@@ -36,15 +32,6 @@ This project provides a complete solution for measuring UAV motor thrust using a
 | Load Cell SCK | 23 | Clock pin |
 | LCD I2C | Default | SDA/SCL pins |
 
-## Software Requirements
-
-- [PlatformIO](https://platformio.org/)
-- Arduino framework for ESP32
-
-### Dependencies (auto-installed)
-- `bogde/HX711` - Load cell amplifier library
-- `madhephaestus/ESP32Servo` - Servo/ESC control
-- `marcoschwartz/LiquidCrystal_I2C` - LCD display driver
 
 ## Installation
 
@@ -98,8 +85,6 @@ make test-lcd            # LCD display test
 make test-algorithm      # Automated testing algorithm
 make test-ui             # Menu system test
 ```
-
-See [test/README.md](test/README.md) for detailed test descriptions.
 
 ## Configuration
 
