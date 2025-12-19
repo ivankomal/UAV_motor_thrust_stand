@@ -4,28 +4,33 @@
 #include <LiquidCrystal_I2C.h>
 #include "HX711.h"
 
-#define MOTOR_PIN 19
-#define POT_PIN 34
-#define BUTTON_PIN 4
-#define DT 18
-#define SCK 23
+// Pin definitions
+#define MOTOR_PIN 19      // PWM pin for motor ESC
+#define POT_PIN 34        // Potentiometer analog input (ADC1_CH6)
+#define BUTTON_PIN 4      // Button for menu navigation
+#define DT 18             // Load cell data pin
+#define SCK 23            // Load cell clock pin
 
-// INVERTED ESC: lower PWM = faster
-#define MIN_PWM 1200
-#define MAX_PWM 1340
+// PWM range for ESC (INVERTED: lower PWM = faster)
+#define MIN_PWM 1200      // Maximum speed (fastest)
+#define MAX_PWM 1340      // Minimum spinning speed (slowest)
 
+// Algorithm test settings
 #define MIN_PWM_ALGO 1210
 #define MAX_PWM_ALGO 1340
 #define PWM_STEP 10
 #define STEP_DELAY 2000
 
+// Load cell calibration
 const float CALIBRATION_WEIGHT_KG = 0.800;
 const float CORRECTION_K = 3.265;
 
+// Drone payload calculation
 const float DRONE_WEIGHT_KG = 0.500;
 const int NUM_MOTORS = 4;
 const float THRUST_TO_WEIGHT_RATIO = 2.0;
 
+// UI States
 enum UIState {
   STATE_WELCOME,
   STATE_MENU,
@@ -33,10 +38,12 @@ enum UIState {
   STATE_ALGORITHM_TEST
 };
 
+// Hardware objects
 Servo esc;
 HX711 scale;
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
+// State variables
 UIState currentState = STATE_WELCOME;
 int selectedOption = 1;
 bool buttonWasPressed = false;
@@ -44,10 +51,13 @@ unsigned long buttonPressStart = 0;
 const unsigned long LONG_PRESS_TIME = 3000;
 const unsigned long DEBOUNCE_DELAY = 50;
 
+// Algorithm test variables
 bool algorithmTestCompleted = false;
 float maxThrustKg = 0.0;
 int algorithmStep = 0;
 int totalAlgorithmSteps = 0;
+
+// Function prototypes
 void displayWelcomeScreen();
 void displayMenu();
 void setupManualTest();
@@ -101,7 +111,7 @@ bool checkButtonPress() {
     delay(DEBOUNCE_DELAY);
 
     if (pressDuration < LONG_PRESS_TIME) {
-      return true;
+      return true;  // Short press
     }
   }
 
@@ -134,55 +144,35 @@ void setupManualTest() {
 }
 
 void runManualTest() {
-  static unsigned long testButtonPressStart = 0;
-  static bool testButtonWasPressed = false;
-
-  bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
-
-  if (buttonPressed && !testButtonWasPressed) {
-    testButtonPressStart = millis();
-    testButtonWasPressed = true;
+  // Check for long press to exit
+  if (checkButtonLongPress()) {
+    Serial.println("\nExiting manual test...");
+    esc.writeMicroseconds(1360);  // Stop motor
+    delay(500);
+    currentState = STATE_MENU;
+    displayMenu();
+    Serial.println("Returned to menu\n");
+    return;
   }
 
-  if (buttonPressed && testButtonWasPressed) {
-    unsigned long pressDuration = millis() - testButtonPressStart;
-    if (pressDuration >= LONG_PRESS_TIME) {
-      Serial.println("\nExiting manual test...");
-      lcd.clear();
-      lcd.setCursor(0, 1);
-      lcd.print("Aborting...");
-      delay(1000);
-
-      esc.writeMicroseconds(1360);
-      delay(500);
-
-      testButtonWasPressed = false;
-      buttonWasPressed = false;
-
-      currentState = STATE_MENU;
-      displayMenu();
-      Serial.println("Returned to menu\n");
-      return;
-    }
-  }
-
-  if (!buttonPressed && testButtonWasPressed) {
-    testButtonWasPressed = false;
-  }
-
+  // Read potentiometer and map to PWM
   int potValue = analogRead(POT_PIN);
   int pwmValue = map(potValue, 0, 4095, MIN_PWM, MAX_PWM);
 
+  // Send PWM to motor
   esc.writeMicroseconds(pwmValue);
 
+  // Calculate throttle percentage
   int throttlePercent = map(pwmValue, MAX_PWM, MIN_PWM, 0, 100);
 
+  // Read load cell
   float thrust_kg = 0.0;
   if (scale.is_ready()) {
     float weight_raw = scale.get_units(10);
     thrust_kg = weight_raw * CORRECTION_K;
   }
 
+  // Display data on Serial Monitor
   Serial.print(throttlePercent);
   Serial.print("%\t| ");
   Serial.print(pwmValue);
@@ -190,6 +180,7 @@ void runManualTest() {
   Serial.print(thrust_kg, 3);
   Serial.println(" kg");
 
+  // Display data on LCD
   lcd.setCursor(0, 1);
   lcd.print("   ");
   lcd.setCursor(0, 1);
@@ -216,6 +207,7 @@ void setupAlgorithmTest() {
 
   delay(1000);
 
+  // Calculate total steps
   int stepsDown = (MAX_PWM_ALGO - MIN_PWM_ALGO) / PWM_STEP;
   int stepsUp = (MAX_PWM_ALGO - MIN_PWM_ALGO) / PWM_STEP;
   totalAlgorithmSteps = stepsDown + stepsUp;
@@ -233,13 +225,15 @@ void setupAlgorithmTest() {
 
 void runAlgorithmTest() {
   if (algorithmTestCompleted) {
-    return;
+    return;  // Test already complete
   }
 
   bool exitRequested = false;
 
+  // Ramp DOWN from MAX to MIN (speeding up)
   Serial.println("=== Speeding up ===");
   for (int pwm = MAX_PWM_ALGO; pwm >= MIN_PWM_ALGO; pwm -= PWM_STEP) {
+    // Check for exit request
     if (checkButtonLongPress()) {
       exitRequested = true;
       break;
@@ -247,12 +241,14 @@ void runAlgorithmTest() {
 
     esc.writeMicroseconds(pwm);
 
+    // Read thrust
     float thrust_kg = 0.0;
     if (scale.is_ready()) {
       float weight_raw = scale.get_units(10);
       thrust_kg = weight_raw * CORRECTION_K;
     }
 
+    // Track maximum
     if (thrust_kg > maxThrustKg) {
       maxThrustKg = thrust_kg;
     }
@@ -260,6 +256,7 @@ void runAlgorithmTest() {
     int throttlePercent = map(pwm, MAX_PWM_ALGO, MIN_PWM_ALGO, 0, 100);
     int progressPercent = (algorithmStep * 100) / totalAlgorithmSteps;
 
+    // Serial output
     Serial.print(pwm);
     Serial.print("us\t| ");
     Serial.print(throttlePercent);
@@ -269,6 +266,7 @@ void runAlgorithmTest() {
     Serial.print(progressPercent);
     Serial.println("%");
 
+    // LCD update
     lcd.setCursor(0, 1);
     lcd.print("Progress: ");
     lcd.print(progressPercent);
@@ -285,7 +283,7 @@ void runAlgorithmTest() {
 
   if (exitRequested) {
     Serial.println("\nExiting algorithm test...");
-    esc.writeMicroseconds(1360);
+    esc.writeMicroseconds(1360);  // Stop motor
     delay(500);
     currentState = STATE_MENU;
     displayMenu();
@@ -296,8 +294,10 @@ void runAlgorithmTest() {
   Serial.println("\n[HOLD] At maximum speed for 2 seconds\n");
   delay(2000);
 
+  // Ramp UP from MIN to MAX (slowing down)
   Serial.println("=== Slowing down ===");
   for (int pwm = MIN_PWM_ALGO; pwm <= MAX_PWM_ALGO; pwm += PWM_STEP) {
+    // Check for exit request
     if (checkButtonLongPress()) {
       exitRequested = true;
       break;
@@ -305,12 +305,14 @@ void runAlgorithmTest() {
 
     esc.writeMicroseconds(pwm);
 
+    // Read thrust
     float thrust_kg = 0.0;
     if (scale.is_ready()) {
       float weight_raw = scale.get_units(10);
       thrust_kg = weight_raw * CORRECTION_K;
     }
 
+    // Track maximum
     if (thrust_kg > maxThrustKg) {
       maxThrustKg = thrust_kg;
     }
@@ -318,6 +320,7 @@ void runAlgorithmTest() {
     int throttlePercent = map(pwm, MAX_PWM_ALGO, MIN_PWM_ALGO, 0, 100);
     int progressPercent = (algorithmStep * 100) / totalAlgorithmSteps;
 
+    // Serial output
     Serial.print(pwm);
     Serial.print("us\t| ");
     Serial.print(throttlePercent);
@@ -327,6 +330,7 @@ void runAlgorithmTest() {
     Serial.print(progressPercent);
     Serial.println("%");
 
+    // LCD update
     lcd.setCursor(0, 1);
     lcd.print("Progress: ");
     lcd.print(progressPercent);
@@ -343,7 +347,7 @@ void runAlgorithmTest() {
 
   if (exitRequested) {
     Serial.println("\nExiting algorithm test...");
-    esc.writeMicroseconds(1360);
+    esc.writeMicroseconds(1360);  // Stop motor
     delay(500);
     currentState = STATE_MENU;
     displayMenu();
@@ -351,12 +355,15 @@ void runAlgorithmTest() {
     return;
   }
 
+  // Stop motor
   esc.writeMicroseconds(MAX_PWM_ALGO);
 
+  // Calculate payload
   float totalThrust = maxThrustKg * NUM_MOTORS;
   float maxTotalWeight = totalThrust / THRUST_TO_WEIGHT_RATIO;
   float payloadCapacity = maxTotalWeight - DRONE_WEIGHT_KG;
 
+  // Serial output
   Serial.println("\n========== PAYLOAD CALCULATION ==========");
   Serial.print("Max single motor thrust: ");
   Serial.print(maxThrustKg, 3);
@@ -375,6 +382,7 @@ void runAlgorithmTest() {
   Serial.println(" kg <<<\n");
   Serial.println("=========================================\n");
 
+  // LCD display results
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Test Complete!");
@@ -400,23 +408,28 @@ void setup() {
 
   Serial.println("\n=== UAV Motor Thrust Stand ===\n");
 
+  // Configure pins
   pinMode(POT_PIN, INPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
+  // Initialize LCD
   Wire.begin();
   lcd.init();
   lcd.backlight();
 
+  // Show welcome screen
   displayWelcomeScreen();
   Serial.println("Welcome screen displayed");
   delay(2000);
 
+  // Attach and arm ESC
   esc.attach(MOTOR_PIN, 1000, 2000);
   Serial.println("Arming ESC at 1360us (stopped)...");
   esc.writeMicroseconds(1360);
   delay(2000);
   Serial.println("ESC armed!");
 
+  // Initialize and calibrate load cell
   Serial.println("\nCalibrating load cell...");
   lcd.clear();
   lcd.setCursor(0, 1);
@@ -432,27 +445,32 @@ void setup() {
 
   Serial.println("Load cell calibrated!");
 
+  // Move to menu
   currentState = STATE_MENU;
   displayMenu();
   Serial.println("Menu displayed\n");
 }
 
 void loop() {
+  // Check button inputs
   bool shortPress = checkButtonPress();
   bool longPress = checkButtonLongPress();
 
   switch (currentState) {
     case STATE_WELCOME:
+      // Auto-transition handled in setup
       break;
 
     case STATE_MENU:
       if (shortPress) {
+        // Toggle option
         selectedOption = (selectedOption == 1) ? 2 : 1;
         displayMenu();
         Serial.print("Option selected: ");
         Serial.println(selectedOption);
       }
       else if (longPress) {
+        // Select option
         Serial.print("Choosing option: ");
         Serial.println(selectedOption);
 
@@ -462,7 +480,7 @@ void loop() {
         } else {
           currentState = STATE_ALGORITHM_TEST;
           setupAlgorithmTest();
-          runAlgorithmTest();
+          runAlgorithmTest();  // Run once
         }
       }
       break;
@@ -472,6 +490,7 @@ void loop() {
       break;
 
     case STATE_ALGORITHM_TEST:
+      // Algorithm test runs once in setup
       break;
   }
 
